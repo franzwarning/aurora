@@ -244,7 +244,7 @@ bool begin_frame() noexcept {
     if (window::is_paused()) {
       return false;
     }
-    if (!g_surface) {
+    if (!g_surface && !g_config.surfaceless) {
       webgpu::refresh_surface(true);
       if (!g_surface) {
         return false;
@@ -363,7 +363,7 @@ void end_frame() noexcept {
         imgui::render(pass, imguiDrawData);
         pass.End();
       }
-    } else {
+    } else if (!g_config.surfaceless) {
       Log.info("Skipping present; window not presentable");
     }
     webgpu::gpu_prof::frame_end(encoder);

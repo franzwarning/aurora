@@ -93,6 +93,16 @@ typedef struct {
   bool pauseOnFocusLost;
   bool allowTextureDumps;
   bool allowCpuAdapter;
+  /*
+   * Run without a canvas/swap-chain surface: rendering targets the internal
+   * EFB framebuffer only and presentation is skipped (the consumer can verify
+   * output via GXPeekZ/depth_peek instead of reading canvas pixels).
+   * Emscripten-only use case: headless CI on GPU-less runners, where Chrome
+   * cannot allocate a WebGPU canvas swap chain for CPU (SwiftShader) adapters
+   * and destroys the device at configure time. Off by default; native builds
+   * are unaffected.
+   */
+  bool surfaceless;
   int32_t windowPosX;
   int32_t windowPosY;
   uint32_t windowWidth;

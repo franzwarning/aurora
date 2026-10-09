@@ -758,6 +758,10 @@ static wgpu::BackendType to_wgpu_backend(AuroraBackend backend) {
 static void release_surface_locked() noexcept { g_surface = {}; }
 
 static bool create_surface() {
+  if (g_config.surfaceless) {
+    // Surfaceless mode: intentionally no canvas surface (see aurora.h).
+    return true;
+  }
   SDL_Window* window = window::get_sdl_window();
   if (window == nullptr) {
     Log.error("Failed to create surface: no window");
@@ -1050,24 +1054,33 @@ bool initialize(AuroraBackend auroraBackend, bool allowCpu) {
   }
   g_queue = g_device.GetQueue();
 
-  const wgpu::Status status = g_surface.GetCapabilities(g_adapter, &g_surfaceCapabilities);
-  if (status != wgpu::Status::Success) {
-    Log.error("Failed to get surface capabilities: {}", magic_enum::enum_name(status));
-    return false;
+  wgpu::TextureFormat surfaceFormat = wgpu::TextureFormat::RGBA8Unorm;
+  wgpu::PresentMode presentMode = wgpu::PresentMode::Fifo;
+  if (g_surface) {
+    const wgpu::Status status = g_surface.GetCapabilities(g_adapter, &g_surfaceCapabilities);
+    if (status != wgpu::Status::Success) {
+      Log.error("Failed to get surface capabilities: {}", magic_enum::enum_name(status));
+      return false;
+    }
+    if (g_surfaceCapabilities.formatCount == 0) {
+      Log.error("Surface has no formats");
+      return false;
+    }
+    if (g_surfaceCapabilities.presentModeCount == 0) {
+      Log.error("Surface has no present modes");
+      return false;
+    }
+    surfaceFormat = best_surface_format();
+    g_vsyncEnabled.store(g_config.vsync, std::memory_order_release);
+    presentMode = select_present_mode(g_surfaceCapabilities);
+    Log.info("Using surface format {}, present mode {}", magic_enum::enum_name(surfaceFormat),
+             magic_enum::enum_name(presentMode));
+  } else {
+    // AuroraConfig.surfaceless: no canvas swap chain (emscripten CI on
+    // GPU-less runners). The fixed format above is only used as the target
+    // format of the (never exercised) present-copy pipeline.
+    Log.info("Surfaceless mode: rendering to EFB only, presentation disabled");
   }
-  if (g_surfaceCapabilities.formatCount == 0) {
-    Log.error("Surface has no formats");
-    return false;
-  }
-  if (g_surfaceCapabilities.presentModeCount == 0) {
-    Log.error("Surface has no present modes");
-    return false;
-  }
-  auto surfaceFormat = best_surface_format();
-  g_vsyncEnabled.store(g_config.vsync, std::memory_order_release);
-  auto presentMode = select_present_mode(g_surfaceCapabilities);
-  Log.info("Using surface format {}, present mode {}", magic_enum::enum_name(surfaceFormat),
-           magic_enum::enum_name(presentMode));
   const auto size = window::get_window_size();
   g_graphicsConfig = GraphicsConfig{
       .surfaceConfiguration =
@@ -1125,7 +1138,8 @@ void release_surface() noexcept {
 
 static void resize_swapchain_internal(uint32_t width, uint32_t height, uint32_t nativeWidth, uint32_t nativeHeight,
                                       bool force) {
-  if (!g_surface || !g_device || width == 0 || height == 0 || nativeHeight == 0 || nativeWidth == 0) {
+  if ((!g_surface && !g_config.surfaceless) || !g_device || width == 0 || height == 0 || nativeHeight == 0 ||
+      nativeWidth == 0) {
     return;
   }
   const bool sizeChanged = g_graphicsConfig.surfaceConfiguration.width != nativeWidth ||
@@ -1140,11 +1154,13 @@ static void resize_swapchain_internal(uint32_t width, uint32_t height, uint32_t 
   }
   g_graphicsConfig.surfaceConfiguration.width = nativeWidth;
   g_graphicsConfig.surfaceConfiguration.height = nativeHeight;
-  auto surfaceConfiguration = g_graphicsConfig.surfaceConfiguration;
-  surfaceConfiguration.device = g_device;
-  {
-    window::SurfaceLock surfaceLock;
-    g_surface.Configure(&surfaceConfiguration);
+  if (g_surface) {
+    auto surfaceConfiguration = g_graphicsConfig.surfaceConfiguration;
+    surfaceConfiguration.device = g_device;
+    {
+      window::SurfaceLock surfaceLock;
+      g_surface.Configure(&surfaceConfiguration);
+    }
   }
   g_frameBuffer = create_render_texture(width, height, true);
   g_frameBufferResolved = create_render_texture(width, height, false);
