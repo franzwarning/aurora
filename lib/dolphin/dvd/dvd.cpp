@@ -3,7 +3,9 @@
 
 #include <algorithm>
 #include <dolphin/os.h>
+#ifndef AURORA_DVD_NO_NOD
 #include <nod.h>
+#endif
 #include <SDL3/SDL_iostream.h>
 #include <tracy/Tracy.hpp>
 
@@ -56,6 +58,7 @@ public:
   virtual int64_t seek(int64_t offset, int32_t whence) = 0;
 };
 
+#ifndef AURORA_DVD_NO_NOD
 class CommandDataNod final : public CommandDataBase {
 public:
   NodHandle* handle;
@@ -72,6 +75,7 @@ public:
     return nod_seek(handle, offset, whence);
   }
 };
+#endif
 
 class CommandDataOverlay final : public CommandDataBase {
 public:
@@ -90,13 +94,17 @@ public:
   }
 };
 
-CommandDataNod* s_disc;
+CommandDataBase* s_disc;
 
 void clearState() {
+#ifndef AURORA_DVD_NO_NOD
   if (s_partition != nullptr) {
     nod_free(s_partition);
     s_partition = nullptr;
   }
+#else
+  s_partition = nullptr;
+#endif
   if (s_disc != nullptr) {
     delete s_disc;
     s_disc = nullptr;
@@ -123,6 +131,7 @@ bool isAligned(const void* addr, uintptr_t align) {
   return (reinterpret_cast<uintptr_t>(addr) & (align - 1)) == 0;
 }
 
+#ifndef AURORA_DVD_NO_NOD
 int64_t sdlStreamReadAt(void* userData, uint64_t offset, void* out, size_t len) {
   auto* io = static_cast<SDL_IOStream*>(userData);
   if (io == nullptr || out == nullptr ||
@@ -163,6 +172,7 @@ void sdlStreamClose(void* userData) {
   }
   SDL_CloseIO(io);
 }
+#endif // AURORA_DVD_NO_NOD
 
 bool nameEqualsIgnoreCase(const std::string& lhs, const char* rhs, size_t rhsLen) {
   return aurora::dvd::impl::nameEqualsIgnoreCase(lhs, std::string_view(rhs, rhsLen));
@@ -648,6 +658,11 @@ void cbForPrepareStreamAsync(s32 result, DVDCommandBlock* block) {
 extern "C" {
 
 bool aurora_dvd_open(const char* disc_path) {
+#ifdef AURORA_DVD_NO_NOD
+  (void)disc_path;
+  Log.error("aurora_dvd_open: disc-image support (nod) is compiled out (AURORA_DVD_NO_NOD); use aurora_dvd_open_virtual");
+  return false;
+#else
   if (disc_path == nullptr) {
     return false;
   }
@@ -677,16 +692,17 @@ bool aurora_dvd_open(const char* disc_path) {
     return false;
   }
 
-  s_disc = new CommandDataNod(discHandle);
+  auto* disc = new CommandDataNod(discHandle);
+  s_disc = disc;
 
-  result = nod_disc_open_partition_kind(s_disc->handle, NOD_PARTITION_KIND_DATA, nullptr, &s_partition);
+  result = nod_disc_open_partition_kind(disc->handle, NOD_PARTITION_KIND_DATA, nullptr, &s_partition);
   if (result != NOD_RESULT_OK || s_partition == nullptr) {
     clearState();
     return false;
   }
 
   NodDiscHeader header{};
-  if (nod_disc_header(s_disc->handle, &header) == NOD_RESULT_OK) {
+  if (nod_disc_header(disc->handle, &header) == NOD_RESULT_OK) {
     std::memcpy(s_diskID.gameName, header.game_id, sizeof(s_diskID.gameName));
     std::memcpy(s_diskID.company, header.game_id + sizeof(s_diskID.gameName), sizeof(s_diskID.company));
     s_diskID.diskNumber = header.disc_num;
@@ -707,6 +723,42 @@ bool aurora_dvd_open(const char* disc_path) {
   s_initialized = true;
   s_worker.start();
   return true;
+#endif // AURORA_DVD_NO_NOD
+}
+
+bool aurora_dvd_open_virtual(const AuroraOverlayCallbacks* callbacks, const AuroraOverlayFile* files, size_t nFiles,
+                             const char* gameId) {
+  if (callbacks == nullptr || callbacks->open == nullptr || callbacks->close == nullptr ||
+      callbacks->read == nullptr || callbacks->seek == nullptr) {
+    return false;
+  }
+
+  s_worker.stop();
+  clearState();
+
+  aurora_dvd_overlay_callbacks(callbacks);
+
+  if (gameId != nullptr) {
+    const size_t len = std::strlen(gameId);
+    if (len > 0) {
+      std::memcpy(s_diskID.gameName, gameId, std::min(len, sizeof(s_diskID.gameName)));
+    }
+    if (len > sizeof(s_diskID.gameName)) {
+      std::memcpy(s_diskID.company, gameId + sizeof(s_diskID.gameName),
+                  std::min(len - sizeof(s_diskID.gameName), sizeof(s_diskID.company)));
+    }
+    std::memcpy(aurora::g_gameName, s_diskID.gameName, sizeof(s_diskID.gameName));
+  }
+
+  // The virtual disc's whole FST comes from the supplied file list; this
+  // rebuilds it (rebuildFST tolerates a null nod partition).
+  s_initialized = true;
+  aurora_dvd_overlay_files(files, nFiles, nullptr);
+
+  s_currentDir = 0;
+  s_currentPath = "/";
+  s_worker.start();
+  return true;
 }
 
 void aurora_dvd_close(void) {
@@ -717,6 +769,10 @@ void aurora_dvd_close(void) {
 void DVDInit(void) {}
 
 const u8* DVDGetDOLLocation(s32* out_size) {
+#ifdef AURORA_DVD_NO_NOD
+  *out_size = 0;
+  return nullptr;
+#else
   if (s_partition == nullptr) {
     *out_size = 0;
     return nullptr;
@@ -731,6 +787,7 @@ const u8* DVDGetDOLLocation(s32* out_size) {
 
   *out_size = meta.raw_dol.size;
   return meta.raw_dol.data;
+#endif // AURORA_DVD_NO_NOD
 }
 
 static int DVDReadAbsAsyncPrioInternal(DVDCommandBlock* block, u32 command, void* addr, s32 length, s32 offset,
@@ -1062,7 +1119,7 @@ BOOL DVDConvertEntrynumToPath(s32 entrynum, char* path, u32 maxlen) {
 BOOL DVDFastOpen(s32 entrynum, DVDFileInfo* fileInfo) {
   std::lock_guard lock(s_fstLock);
 
-  if (!s_initialized || fileInfo == nullptr || !isValidEntryNum(entrynum) || s_partition == nullptr) {
+  if (!s_initialized || fileInfo == nullptr || !isValidEntryNum(entrynum)) {
     return FALSE;
   }
 
@@ -1086,6 +1143,10 @@ BOOL DVDFastOpen(s32 entrynum, DVDFileInfo* fileInfo) {
 
     fileInfo->cb.userData = new CommandDataOverlay(handle);
   } else {
+#ifndef AURORA_DVD_NO_NOD
+    if (s_partition == nullptr) {
+      return FALSE;
+    }
     NodHandle* handle = nullptr;
     NodResult result = nod_partition_open_file(s_partition, entry.origEntryNum, &handle);
     if (result != NOD_RESULT_OK || handle == nullptr) {
@@ -1093,6 +1154,9 @@ BOOL DVDFastOpen(s32 entrynum, DVDFileInfo* fileInfo) {
     }
 
     fileInfo->cb.userData = new CommandDataNod(handle);
+#else
+    return FALSE;
+#endif
   }
 
   atomic_store_release(fileInfo->cb.state, DVD_STATE_END);

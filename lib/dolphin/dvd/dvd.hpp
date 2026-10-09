@@ -4,7 +4,13 @@
 #include <memory>
 #include <mutex>
 
+#ifdef AURORA_DVD_NO_NOD
+// nod-free build (e.g. wasm): the disc-image backend is compiled out and only
+// virtual/overlay files are served. NodHandle stays an opaque (unused) type.
+struct NodHandle;
+#else
 #include <nod.h>
+#endif
 
 #include <dolphin/os.h>
 #include <aurora/dvd.h>

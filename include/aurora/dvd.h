@@ -122,6 +122,27 @@ void aurora_dvd_overlay_files(const AuroraOverlayFile* files, size_t nFiles, s32
  */
 s32 aurora_dvd_base_entry_count();
 
+/**
+ * \brief Open a "virtual disc" composed entirely of consumer-supplied files.
+ *
+ * No disc image (nod) is involved: the supplied files form the whole FST and
+ * all reads are served through the supplied callbacks (same contract as the
+ * overlay system above). Useful for host-directory asset trees and for
+ * platforms where nod is unavailable (e.g. wasm, where files arrive as a
+ * fetched archive).
+ *
+ * Files must use absolute paths ("/foo/bar.bin"); directories are implied.
+ *
+ * @param callbacks Read callbacks for the virtual files (as for overlays).
+ * @param files     Array of files making up the disc.
+ * @param nFiles    Amount of files in the array.
+ * @param gameId    Optional 6-character game id ("GN3E5D": 4 game + 2 company)
+ *                  used to populate DVDGetCurrentDiskID; may be NULL.
+ * Returns true on success, false on failure.
+ */
+bool aurora_dvd_open_virtual(const AuroraOverlayCallbacks* callbacks, const AuroraOverlayFile* files, size_t nFiles,
+                             const char* gameId);
+
 #ifdef __cplusplus
 }
 #endif

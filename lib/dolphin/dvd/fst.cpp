@@ -74,6 +74,7 @@ s32 allocateOverlayEntryNum(std::string_view path) {
 }
 
 
+#ifndef AURORA_DVD_NO_NOD
 u32 fstCallback(u32 index, NodNodeKind kind, const char* name, u32 size, void* userData) {
   auto* ctx = static_cast<IterateContext*>(userData);
 
@@ -96,6 +97,7 @@ u32 fstCallback(u32 index, NodNodeKind kind, const char* name, u32 size, void* u
 
   return index + 1;
 }
+#endif
 
 IterateNode* findNode(const IterateNode& node, const std::string_view name) {
   for (const auto& child : node.children) {
@@ -247,7 +249,14 @@ namespace aurora::dvd::impl {
 bool rebuildFST() {
   using namespace std::string_literals;
 
-  if (s_partition == nullptr) {
+#ifndef AURORA_DVD_NO_NOD
+  const bool hasBaseDisc = s_partition != nullptr;
+#else
+  const bool hasBaseDisc = false;
+#endif
+  // A null partition is only valid once a disc has been opened virtually
+  // (aurora_dvd_open_virtual) — before any open, there is nothing to build.
+  if (!hasBaseDisc && !s_initialized) {
     return false;
   }
 
@@ -265,7 +274,11 @@ bool rebuildFST() {
   ctx.root = std::make_shared<IterateNode>(""s, true, 0, 0);
   ctx.dirStack.emplace_back(ctx.root, std::numeric_limits<u32>::max());
 
-  nod_partition_iterate_fst(s_partition, fstCallback, &ctx);
+#ifndef AURORA_DVD_NO_NOD
+  if (hasBaseDisc) {
+    nod_partition_iterate_fst(s_partition, fstCallback, &ctx);
+  }
+#endif
   s_baseEntryCount = calcEntryCount(*ctx.root);
   syncOverlayEntryAllocator();
   mergeOverlayFilesIntoContext(ctx);

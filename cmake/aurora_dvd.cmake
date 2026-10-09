@@ -1,4 +1,8 @@
-include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/AuroraNodProvider.cmake)
+option(AURORA_DVD_NOD "Enable the nod disc-image (ISO/RVZ) DVD backend; OFF for virtual-disc-only platforms like wasm" ON)
+
+if (AURORA_DVD_NOD)
+    include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/AuroraNodProvider.cmake)
+endif ()
 find_package(Threads REQUIRED)
 
 add_library(aurora_dvd STATIC lib/dolphin/dvd/dvd.cpp lib/dolphin/dvd/dvd.hpp lib/dolphin/dvd/fst.cpp)
@@ -7,5 +11,10 @@ set_target_properties(aurora_dvd PROPERTIES FOLDER "aurora")
 
 target_compile_definitions(aurora_dvd PUBLIC AURORA TARGET_PC)
 target_include_directories(aurora_dvd PUBLIC include)
-target_link_libraries(aurora_dvd PUBLIC aurora::core nod::nod fmt::fmt ${AURORA_SDL3_TARGET} Threads::Threads)
+target_link_libraries(aurora_dvd PUBLIC aurora::core fmt::fmt ${AURORA_SDL3_TARGET} Threads::Threads)
+if (AURORA_DVD_NOD)
+    target_link_libraries(aurora_dvd PUBLIC nod::nod)
+else ()
+    target_compile_definitions(aurora_dvd PRIVATE AURORA_DVD_NO_NOD)
+endif ()
 target_link_libraries(aurora_dvd PRIVATE Tracy::TracyClient)
