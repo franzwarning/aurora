@@ -1022,9 +1022,9 @@ bool initialize(AuroraBackend auroraBackend, bool allowCpu) {
         wgpu::CallbackMode::AllowSpontaneous,
         [](const wgpu::Device& device, wgpu::DeviceLostReason reason, wgpu::StringView message) {
           if (g_initialized) {
-            FATAL("Device lost: {}", message);
+            FATAL("Device lost (reason {}): {}", underlying(reason), message);
           } else {
-            Log.warn("Device lost: {}", message);
+            Log.warn("Device lost (reason {}): {}", underlying(reason), message);
           }
         });
     const auto future =
