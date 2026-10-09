@@ -37,8 +37,11 @@ endfunction()
 # ── Auto: resolve provider based on platform availability ──
 set(_aurora_sdl3_provider "${AURORA_SDL3_PROVIDER}")
 if (_aurora_sdl3_provider STREQUAL "auto")
+  if (EMSCRIPTEN)
+    # Emscripten ships an SDL3 port; no native package/vendor build applies.
+    set(_aurora_sdl3_provider "emscripten")
   # Prebuilt SDL3 packages are available for Windows (MSVC and MinGW)
-  if (WIN32)
+  elseif (WIN32)
     set(_aurora_sdl3_provider "package")
   else ()
     set(CMAKE_FIND_PACKAGE_TARGETS_GLOBAL ON)
@@ -54,7 +57,20 @@ if (_aurora_sdl3_provider STREQUAL "auto")
   message(STATUS "aurora: SDL3 auto-resolved provider: ${_aurora_sdl3_provider}")
 endif ()
 
-if (_aurora_sdl3_provider STREQUAL "system")
+if (_aurora_sdl3_provider STREQUAL "emscripten")
+  # ── Emscripten: SDL3 port (--use-port=sdl3) ──
+  if (NOT EMSCRIPTEN)
+    message(FATAL_ERROR "AURORA_SDL3_PROVIDER=emscripten requires an Emscripten toolchain")
+  endif ()
+  message(STATUS "aurora: Using emscripten SDL3 port (provider=emscripten)")
+  if (NOT TARGET SDL3::SDL3)
+    add_library(SDL3::SDL3 INTERFACE IMPORTED GLOBAL)
+    set_property(TARGET SDL3::SDL3 PROPERTY INTERFACE_COMPILE_OPTIONS "SHELL:--use-port=sdl3")
+    set_property(TARGET SDL3::SDL3 PROPERTY INTERFACE_LINK_OPTIONS "--use-port=sdl3")
+  endif ()
+  set(AURORA_SDL3_TARGET SDL3::SDL3 CACHE INTERNAL "")
+
+elseif (_aurora_sdl3_provider STREQUAL "system")
   # ── System: find_package(SDL3) ──
   message(STATUS "aurora: Using system SDL3 (provider=system)")
   if (NOT SDL3_FOUND)
@@ -158,7 +174,7 @@ elseif (_aurora_sdl3_provider STREQUAL "vendor")
 
 else ()
   message(FATAL_ERROR "Invalid AURORA_SDL3_PROVIDER: ${AURORA_SDL3_PROVIDER} "
-    "(must be auto, vendor, system, or package)")
+    "(must be auto, vendor, system, package, or emscripten)")
 endif ()
 
 if (ANDROID)

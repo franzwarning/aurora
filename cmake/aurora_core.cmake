@@ -79,14 +79,26 @@ if (AURORA_ENABLE_RMLUI)
 endif ()
 
 if (AURORA_ENABLE_GX)
-    target_compile_definitions(aurora_core PUBLIC AURORA_ENABLE_GX WEBGPU_DAWN)
-    target_sources(aurora_core PRIVATE
-            lib/webgpu/gpu.cpp
-            lib/webgpu/gpu_cache.cpp
-            lib/webgpu/gpu_prof.cpp
-            lib/dawn/BackendBinding.cpp
-            lib/dawn/TracyPlatform.cpp
-    )
+    target_compile_definitions(aurora_core PUBLIC AURORA_ENABLE_GX)
+    if (EMSCRIPTEN)
+        # Browser WebGPU via emdawnwebgpu; no native Dawn.
+        target_compile_definitions(aurora_core PUBLIC ENABLE_BACKEND_WEBGPU)
+        target_sources(aurora_core PRIVATE
+                lib/webgpu/gpu.cpp
+                lib/webgpu/gpu_cache.cpp
+                lib/webgpu/gpu_prof.cpp
+                lib/dawn/BackendBinding.cpp
+        )
+    else ()
+        target_compile_definitions(aurora_core PUBLIC WEBGPU_DAWN)
+        target_sources(aurora_core PRIVATE
+                lib/webgpu/gpu.cpp
+                lib/webgpu/gpu_cache.cpp
+                lib/webgpu/gpu_prof.cpp
+                lib/dawn/BackendBinding.cpp
+                lib/dawn/TracyPlatform.cpp
+        )
+    endif ()
     if (CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "GNU")
         set_source_files_properties(lib/dawn/TracyPlatform.cpp PROPERTIES COMPILE_FLAGS -fno-rtti)
     endif ()

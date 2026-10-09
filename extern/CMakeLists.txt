@@ -244,9 +244,17 @@ if (AURORA_ENABLE_GX)
     add_library(imgui_backends STATIC
       ${imgui_SOURCE_DIR}/backends/imgui_impl_sdl3.cpp
       ${imgui_SOURCE_DIR}/backends/imgui_impl_sdlrenderer3.cpp
-      ${imgui_SOURCE_DIR}/backends/imgui_impl_wgpu.cpp
     )
-    target_compile_definitions(imgui_backends PRIVATE IMGUI_IMPL_WEBGPU_BACKEND_DAWN)
+    if (EMSCRIPTEN)
+      # imgui_impl_wgpu.cpp cannot build against emdawnwebgpu headers
+      # (its emscripten path targets the legacy emscripten webgpu.h).
+      target_sources(imgui_backends PRIVATE ${PROJECT_SOURCE_DIR}/lib/imgui_wgpu_stub.cpp)
+    else ()
+      target_sources(imgui_backends PRIVATE ${imgui_SOURCE_DIR}/backends/imgui_impl_wgpu.cpp)
+      # imgui's WGPU backend has its own emscripten path that requires
+      # neither backend macro to be defined.
+      target_compile_definitions(imgui_backends PRIVATE IMGUI_IMPL_WEBGPU_BACKEND_DAWN)
+    endif ()
     target_link_libraries(imgui_backends PRIVATE imgui ${AURORA_SDL3_TARGET} dawn::webgpu_dawn)
     target_link_libraries(imgui PUBLIC imgui_backends)
 

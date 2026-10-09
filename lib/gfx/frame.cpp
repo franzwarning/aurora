@@ -28,6 +28,10 @@
 #include <vector>
 
 #include <tracy/Tracy.hpp>
+
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+#endif
 #include <magic_enum.hpp>
 
 namespace aurora::gfx {
@@ -179,7 +183,16 @@ void wait_for_gpu_progress(std::chrono::nanoseconds sleepDuration) {
   if (render_worker::is_idle()) {
     enqueue_process_events();
   }
+#ifdef __EMSCRIPTEN__
+  // JS WebGPU promises (buffer maps, work-done events) only resolve when the
+  // main thread returns to the browser event loop; a plain sleep_for would
+  // deadlock the spin. emscripten_sleep yields via Asyncify, then
+  // ProcessEvents delivers the freshly-resolved callbacks on re-entry.
+  const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(sleepDuration).count();
+  emscripten_sleep(ms > 0 ? 1u : 0u);
+#else
   std::this_thread::sleep_for(sleepDuration);
+#endif
 }
 
 void pace_frame_start() {

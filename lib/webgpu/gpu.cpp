@@ -75,6 +75,7 @@ static std::atomic_bool g_vsyncEnabled = true;
 
 namespace {
 
+#ifdef WEBGPU_DAWN
 AuroraLogLevel wgpu_log_level(wgpu::LoggingType type) {
   switch (type) {
   case wgpu::LoggingType::Verbose:
@@ -93,6 +94,7 @@ AuroraLogLevel wgpu_log_level(wgpu::LoggingType type) {
 void wgpu_log(wgpu::LoggingType type, wgpu::StringView message) {
   Log.report(wgpu_log_level(type), "WebGPU message: {}", message);
 }
+#endif
 
 struct ResampleUniformBlock {
   uint32_t samplerMode = 0;
@@ -1042,7 +1044,9 @@ bool initialize(AuroraBackend auroraBackend, bool allowCpu) {
     if (!g_device) {
       return false;
     }
+#ifdef WEBGPU_DAWN
     g_device.SetLoggingCallback(wgpu_log);
+#endif
   }
   g_queue = g_device.GetQueue();
 

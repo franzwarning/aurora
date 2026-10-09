@@ -76,6 +76,35 @@ function(_aurora_dawn_fix_android_link_interface)
   endif ()
 endfunction()
 
+# Emscripten uses Dawn's emdawnwebgpu port instead of a native Dawn build.
+function(_aurora_dawn_setup_emscripten)
+  if (NOT TARGET dawn_webgpu_dawn_emscripten)
+    add_library(dawn_webgpu_dawn_emscripten INTERFACE)
+    add_library(dawn::webgpu_dawn ALIAS dawn_webgpu_dawn_emscripten)
+    if (AURORA_EMDAWNWEBGPU_PORT)
+      target_compile_options(dawn_webgpu_dawn_emscripten INTERFACE
+        "SHELL:--use-port=${AURORA_EMDAWNWEBGPU_PORT}")
+      target_link_options(dawn_webgpu_dawn_emscripten INTERFACE
+        "--use-port=${AURORA_EMDAWNWEBGPU_PORT}")
+    else ()
+      target_compile_options(dawn_webgpu_dawn_emscripten INTERFACE
+        "SHELL:--use-port=emdawnwebgpu")
+      target_link_options(dawn_webgpu_dawn_emscripten INTERFACE
+        "--use-port=emdawnwebgpu")
+    endif ()
+  endif ()
+  # No native Dawn backends exist under emscripten; the browser's WebGPU
+  # implementation is the backend.
+  set(DAWN_ENABLE_D3D12 OFF CACHE INTERNAL "")
+  set(DAWN_ENABLE_D3D11 OFF CACHE INTERNAL "")
+  set(DAWN_ENABLE_VULKAN OFF CACHE INTERNAL "")
+  set(DAWN_ENABLE_METAL OFF CACHE INTERNAL "")
+  set(DAWN_ENABLE_DESKTOP_GL OFF CACHE INTERNAL "")
+  set(DAWN_ENABLE_OPENGLES OFF CACHE INTERNAL "")
+  set(DAWN_ENABLE_NULL OFF CACHE INTERNAL "")
+  set(AURORA_DAWN_IS_SHARED FALSE PARENT_SCOPE)
+endfunction()
+
 aurora_get_target_arch(_dawn_target_arch)
 string(TOLOWER "${CMAKE_SYSTEM_NAME}" _dawn_system)
 string(TOLOWER "${_dawn_target_arch}" _dawn_arch)
@@ -87,8 +116,10 @@ endif ()
 # ── Auto: resolve provider based on platform availability ──
 set(_aurora_dawn_provider "${AURORA_DAWN_PROVIDER}")
 if (_aurora_dawn_provider STREQUAL "auto")
+  if (EMSCRIPTEN)
+    set(_aurora_dawn_provider "emscripten")
   # Prebuilt Dawn packages available for: windows-{amd64,arm64}, linux-{x86_64,aarch64}, darwin-{arm64,x86_64}, ios-arm64, android-aarch64
-  if (_has_dawn_package)
+  elseif (_has_dawn_package)
     set(_aurora_dawn_provider "package")
   else ()
     set(CMAKE_FIND_PACKAGE_TARGETS_GLOBAL ON)
@@ -104,7 +135,17 @@ if (_aurora_dawn_provider STREQUAL "auto")
   message(STATUS "aurora: Dawn auto-resolved provider: ${_aurora_dawn_provider}")
 endif ()
 
-if (_aurora_dawn_provider STREQUAL "vendor")
+if (_aurora_dawn_provider STREQUAL "emscripten")
+  # ── Emscripten: emdawnwebgpu port (no native Dawn library) ──
+  if (NOT EMSCRIPTEN)
+    message(FATAL_ERROR "AURORA_DAWN_PROVIDER=emscripten requires an Emscripten toolchain")
+  endif ()
+  set(AURORA_EMDAWNWEBGPU_PORT "" CACHE STRING
+    "emdawnwebgpu port specifier for --use-port (empty = emscripten's built-in pin; may be a path to a .remoteport.py or unpacked pkg dir for a newer Dawn)")
+  message(STATUS "aurora: Using emdawnwebgpu port (provider=emscripten)")
+  _aurora_dawn_setup_emscripten()
+
+elseif (_aurora_dawn_provider STREQUAL "vendor")
   # ── Vendor: FetchContent build from source ──
   if (NOT TARGET webgpu_dawn)
     message(STATUS "aurora: Fetching Dawn (provider=vendor, linkage=${AURORA_DAWN_LINKAGE})")
@@ -254,7 +295,7 @@ elseif (_aurora_dawn_provider STREQUAL "package")
 
 else ()
   message(FATAL_ERROR "Invalid AURORA_DAWN_PROVIDER: ${AURORA_DAWN_PROVIDER} "
-    "(must be auto, vendor, system, or package)")
+    "(must be auto, vendor, system, package, or emscripten)")
 endif ()
 
 # Ensure dawn::dawncpp_headers target exists (needed by tests).

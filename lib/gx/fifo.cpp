@@ -24,7 +24,13 @@ uint32_t sDlWritePos = 0;
 
 namespace {
 constexpr Module Log{"aurora::gx::fifo"};
+#ifdef __EMSCRIPTEN__
+// Browser WebGPU calls must run on the main thread (emdawnwebgpu has no
+// worker proxying), so the FIFO is processed inline.
+constexpr auto kProcessingMode = ProcessingMode::Inline;
+#else
 constexpr auto kProcessingMode = ProcessingMode::Thread;
+#endif
 constexpr uint32_t kDrawBatchSize = 1;
 
 bool sFrameActive = false;

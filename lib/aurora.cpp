@@ -380,7 +380,13 @@ void end_frame() noexcept {
       {
         window::SurfaceLock surfaceLock;
         if (window::is_presentable()) {
+#ifdef __EMSCRIPTEN__
+          // emdawnwebgpu has no wgpuSurfacePresent; the browser presents
+          // automatically at the end of the rAF callback.
+          status = wgpu::Status::Success;
+#else
           status = g_surface.Present();
+#endif
         }
       }
       if (status) {

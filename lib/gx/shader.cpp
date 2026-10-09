@@ -10,6 +10,8 @@
 #include <dolphin/gx/GXEnum.h>
 
 #include <absl/container/flat_hash_set.h>
+#include <SDL3/SDL_stdinc.h>
+#include <cstdio>
 #include <mutex>
 #include <string_view>
 #include <utility>
@@ -2064,6 +2066,9 @@ wgpu::ShaderModule build_shader(const ShaderConfig& config, const gfx::RenderTar
   }
   const auto shaderSource = build_shader_source(config, dstAlphaMode, normalAttachment);
   const auto hash = xxh3_hash(dstAlphaMode, xxh3_hash(normalAttachment, xxh3_hash(config)));
+  if (true) { // TEMP DEBUG
+    fmt::print(stderr, "=== GX Shader {:x} ===\n{}\n=== end ===\n", hash, shaderSource);
+  }
   wgpu::ShaderSourceWGSL wgslDescriptor{};
   wgslDescriptor.code = shaderSource.c_str();
   const auto label = fmt::format("GX Shader {:x}", hash);

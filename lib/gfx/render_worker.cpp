@@ -196,6 +196,12 @@ void initialize() {
   }
   g_queue.reset();
   g_pendingItems.store(0, std::memory_order_release);
+#ifdef __EMSCRIPTEN__
+  // WebGPU JS calls are only valid on the browser main thread; run all
+  // render work inline instead of on a worker (see enqueue()).
+  g_running.store(false, std::memory_order_release);
+  return;
+#endif
   g_thread = thread::Thread{{
                                 .name = "Aurora render worker",
                                 .affinity = thread::Affinity::SharedCache,
@@ -266,7 +272,16 @@ void synchronize() {
   sync->cv.wait(lock, [&] { return sync->complete; });
 }
 
-bool is_worker_thread() noexcept { return g_workerThreadId == std::this_thread::get_id(); }
+bool is_worker_thread() noexcept {
+#ifdef __EMSCRIPTEN__
+  if (!g_running.load(std::memory_order_acquire)) {
+    // Single-threaded mode: all render work executes inline, so the calling
+    // thread effectively is the worker.
+    return true;
+  }
+#endif
+  return g_workerThreadId == std::this_thread::get_id();
+}
 
 bool is_idle() noexcept { return g_pendingItems.load(std::memory_order_acquire) == 0; }
 

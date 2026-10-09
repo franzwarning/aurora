@@ -31,15 +31,15 @@ endif ()
 
 # Dawn/WebGPU (if AURORA_ENABLE_GX)
 set(AURORA_DAWN_PROVIDER "${_default_provider}" CACHE STRING
-  "How to provide Dawn: auto, vendor (build from source), system (find_package/imported), package (download prebuilt)")
-set_property(CACHE AURORA_DAWN_PROVIDER PROPERTY STRINGS auto vendor system package)
+  "How to provide Dawn: auto, vendor (build from source), system (find_package/imported), package (download prebuilt), emscripten (emdawnwebgpu port)")
+set_property(CACHE AURORA_DAWN_PROVIDER PROPERTY STRINGS auto vendor system package emscripten)
 set(AURORA_DAWN_LINKAGE "${_default_linkage}" CACHE STRING "Dawn linkage type preference")
 set_property(CACHE AURORA_DAWN_LINKAGE PROPERTY STRINGS shared static)
 
 # SDL3
 set(AURORA_SDL3_PROVIDER "${_default_provider}" CACHE STRING
-  "How to provide SDL3: auto, vendor (build from source), system (find_package/imported), or package (download prebuilt)")
-set_property(CACHE AURORA_SDL3_PROVIDER PROPERTY STRINGS auto vendor system package)
+  "How to provide SDL3: auto, vendor (build from source), system (find_package/imported), package (download prebuilt), or emscripten (--use-port=sdl3)")
+set_property(CACHE AURORA_SDL3_PROVIDER PROPERTY STRINGS auto vendor system package emscripten)
 set(AURORA_SDL3_LINKAGE "${_default_linkage}" CACHE STRING "SDL3 linkage type preference")
 set_property(CACHE AURORA_SDL3_LINKAGE PROPERTY STRINGS shared static)
 
